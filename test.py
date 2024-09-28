@@ -1,21 +1,25 @@
-from flask import Flask, Response, send_file
-from time import sleep
+from picamera2 import Picamera2, Preview
+from flask import Flask, send_file
 from io import BytesIO
-from picamera import PiCamera
+from time import sleep
 from threading import Thread
+from PIL import Image
 
 app = Flask(__name__)
-camera = PiCamera()
-camera.resolution = (640, 480)
+camera = Picamera2()
+camera_config = camera.create_still_configuration(main={"size": (640, 480)})
+camera.configure(camera_config)
+camera.start()
 
-# Variable to store the latest image in memory
 latest_image = BytesIO()
 
 def capture_image():
     global latest_image
     while True:
         stream = BytesIO()
-        camera.capture(stream, format='jpeg')
+        image = camera.capture_array()
+        img = Image.fromarray(image)
+        img.save(stream, format='jpeg')
         stream.seek(0)
         latest_image = stream
         sleep(1)  # Wait 1 second before capturing the next image
