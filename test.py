@@ -9,7 +9,7 @@ app = Flask(__name__)
 camera = Picamera2()
 
 # Initialize camera with default settings
-camera_config = camera.create_still_configuration(main={"size": (1920, 1080)})
+camera_config = camera.create_still_configuration(main={"size": (3280, 2464)})
 camera.configure(camera_config)
 camera.start()
 
@@ -107,7 +107,8 @@ def index():
             <h1>Live Camera Feed</h1>
             <div class="container">
                 <div class="image">
-                    <img src="/image.jpg" width="1920" height="1080"/>
+                    <!-- Scaled down image display -->
+                    <img src="/image.jpg" width="640" height="480"/>
                 </div>
                 <div class="settings">
                     <h2>Camera Settings</h2>
@@ -148,7 +149,9 @@ def index():
 @app.route('/image.jpg')
 def image():
     """Returns the latest image captured."""
-    return send_file(latest_image, mimetype='image/jpeg')
+    # Ensure the image file is open and valid
+    image_stream = BytesIO(latest_image.getvalue())
+    return send_file(image_stream, mimetype='image/jpeg')
 
 if __name__ == '__main__':
     # Start the image capture thread
