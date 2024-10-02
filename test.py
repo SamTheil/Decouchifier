@@ -31,15 +31,18 @@ def capture_image():
     while True:
         stream = BytesIO()
         with settings_lock:
-            # Apply the current settings to the camera
-            camera.set_controls({
-                "ExposureTime": camera_settings["ExposureTime"],
-                "AnalogueGain": camera_settings["AnalogueGain"],
+            # Build the controls dict, excluding None values
+            controls = {
                 "Brightness": camera_settings["Brightness"],
                 "Contrast": camera_settings["Contrast"],
                 "AwbEnable": camera_settings["AwbEnable"],
                 "AeEnable": camera_settings["AeEnable"]
-            })
+            }
+            if camera_settings["ExposureTime"] is not None:
+                controls["ExposureTime"] = camera_settings["ExposureTime"]
+            if camera_settings["AnalogueGain"] is not None:
+                controls["AnalogueGain"] = camera_settings["AnalogueGain"]
+            camera.set_controls(controls)
         # Capture the image
         image = camera.capture_array()
         img = Image.fromarray(image)
@@ -55,29 +58,37 @@ def index():
     if request.method == 'POST':
         # Update camera settings based on form input
         with settings_lock:
-            # Update exposure time
-            exposure = request.form.get('exposure')
-            camera_settings["ExposureTime"] = int(exposure) if exposure else None
-
-            # Update gain
-            gain = request.form.get('gain')
-            camera_settings["AnalogueGain"] = float(gain) if gain else None
-
-            # Update brightness
-            brightness = request.form.get('brightness')
-            camera_settings["Brightness"] = float(brightness)
-
-            # Update contrast
-            contrast = request.form.get('contrast')
-            camera_settings["Contrast"] = float(contrast)
-
             # Update auto white balance
             awb = request.form.get('awb')
-            camera_settings["AwbEnable"] = (awb == 'on')
+            camera_settings["AwbEnable"] = awb == 'on'
 
             # Update auto exposure
             ae = request.form.get('ae')
-            camera_settings["AeEnable"] = (ae == 'on')
+            camera_settings["AeEnable"] = ae == 'on'
+
+            # Update exposure time
+            exposure = request.form.get('exposure')
+            if exposure and not camera_settings["AeEnable"]:
+                camera_settings["ExposureTime"] = int(exposure)
+            else:
+                camera_settings["ExposureTime"] = None
+
+            # Update gain
+            gain = request.form.get('gain')
+            if gain and not camera_settings["AeEnable"]:
+                camera_settings["AnalogueGain"] = float(gain)
+            else:
+                camera_settings["AnalogueGain"] = None
+
+            # Update brightness
+            brightness = request.form.get('brightness')
+            if brightness is not None:
+                camera_settings["Brightness"] = float(brightness)
+
+            # Update contrast
+            contrast = request.form.get('contrast')
+            if contrast is not None:
+                camera_settings["Contrast"] = float(contrast)
 
     # Generate the HTML page with the current settings
     return f'''
