@@ -107,7 +107,7 @@ def index():
             <h1>Live Camera Feed</h1>
             <div class="container">
                 <div class="image">
-                    <img src="/image.jpg" width="640" height="480"/>
+                    <img src="/image.jpg" width="1920" height="1080"/>
                 </div>
                 <div class="settings">
                     <h2>Camera Settings</h2>
