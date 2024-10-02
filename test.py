@@ -9,7 +9,7 @@ app = Flask(__name__)
 camera = Picamera2()
 
 # Initialize camera with default settings
-camera_config = camera.create_still_configuration(main={"size": (3280, 2464)})
+camera_config = camera.create_still_configuration(main={"size": (1920, 1080)})
 camera.configure(camera_config)
 camera.start()
 
