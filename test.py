@@ -47,10 +47,10 @@ def capture_image():
         image = camera.capture_array()
         img = Image.fromarray(image)
         # Save the image with higher JPEG quality
-        img.save(stream, format='jpeg', quality=95)
+        img.save(stream, format='jpeg', quality=85)
         stream.seek(0)
         latest_image = stream
-        sleep(1)  # Wait 1 second before capturing the next image
+        sleep(3)  # Wait 1 second before capturing the next image
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
