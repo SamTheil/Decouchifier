@@ -7,11 +7,19 @@ from PIL import Image
 
 app = Flask(__name__)
 camera = Picamera2()
-camera_config = camera.create_still_configuration(main={"size": (640, 480)})
+# Increase the resolution to 1920x1080
+camera_config = camera.create_still_configuration(main={"size": (1920, 1080)})
 camera.configure(camera_config)
 camera.start()
 
 latest_image = BytesIO()
+
+camera.set_controls({
+    "ExposureTime": 10000,  # Adjust as needed
+    "AnalogueGain": 1.0,
+    "AwbEnable": True,
+    "AeEnable": True
+})
 
 def capture_image():
     global latest_image
@@ -19,7 +27,8 @@ def capture_image():
         stream = BytesIO()
         image = camera.capture_array()
         img = Image.fromarray(image)
-        img.save(stream, format='jpeg')
+        # Save the image with higher JPEG quality
+        img.save(stream, format='jpeg', quality=95)
         stream.seek(0)
         latest_image = stream
         sleep(1)  # Wait 1 second before capturing the next image
@@ -32,7 +41,7 @@ def index():
         <head><title>Raspberry Pi Camera</title></head>
         <body>
             <h1>Live Camera Feed</h1>
-            <img src="/image.jpg" width="640" height="480"/>
+            <img src="/image.jpg" width="1920" height="1080"/>
         </body>
     </html>
     '''
