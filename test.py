@@ -1,30 +1,46 @@
 from picamera2 import Picamera2, Preview
-from flask import Flask, send_file
+from flask import Flask, send_file, request
 from io import BytesIO
 from time import sleep
-from threading import Thread
+from threading import Thread, Lock
 from PIL import Image
 
 app = Flask(__name__)
 camera = Picamera2()
-# Increase the resolution to 1920x1080
+
+# Initialize camera with default settings
 camera_config = camera.create_still_configuration(main={"size": (1920, 1080)})
 camera.configure(camera_config)
 camera.start()
 
 latest_image = BytesIO()
+settings_lock = Lock()  # Lock for thread-safe settings update
 
-camera.set_controls({
-    "ExposureTime": 10000,  # Adjust as needed
-    "AnalogueGain": 1.0,
+# Default camera settings
+camera_settings = {
+    "ExposureTime": None,  # None for auto
+    "AnalogueGain": None,  # None for auto
+    "Brightness": 0.0,     # Range: -1.0 to 1.0
+    "Contrast": 1.0,       # Range: 0.0 to 2.0
     "AwbEnable": True,
     "AeEnable": True
-})
+}
 
 def capture_image():
     global latest_image
     while True:
         stream = BytesIO()
+        with settings_lock:
+            # Apply the current settings to the camera
+            camera.set_controls({
+                "ExposureTime": camera_settings["ExposureTime"],
+                "AnalogueGain": camera_settings["AnalogueGain"],
+                "Brightness": camera_settings["Brightness"],
+                "Contrast": camera_settings["Contrast"],
+                "AwbEnable": camera_settings["AwbEnable"],
+                "AeEnable": camera_settings["AeEnable"]
+            })
+        # Capture the image
         image = camera.capture_array()
         img = Image.fromarray(image)
         # Save the image with higher JPEG quality
@@ -33,15 +49,87 @@ def capture_image():
         latest_image = stream
         sleep(1)  # Wait 1 second before capturing the next image
 
-@app.route('/')
+@app.route('/', methods=['GET', 'POST'])
 def index():
-    """Simple webpage that displays the camera image."""
-    return '''
+    """Webpage that displays the camera image and settings form."""
+    if request.method == 'POST':
+        # Update camera settings based on form input
+        with settings_lock:
+            # Update exposure time
+            exposure = request.form.get('exposure')
+            camera_settings["ExposureTime"] = int(exposure) if exposure else None
+
+            # Update gain
+            gain = request.form.get('gain')
+            camera_settings["AnalogueGain"] = float(gain) if gain else None
+
+            # Update brightness
+            brightness = request.form.get('brightness')
+            camera_settings["Brightness"] = float(brightness)
+
+            # Update contrast
+            contrast = request.form.get('contrast')
+            camera_settings["Contrast"] = float(contrast)
+
+            # Update auto white balance
+            awb = request.form.get('awb')
+            camera_settings["AwbEnable"] = (awb == 'on')
+
+            # Update auto exposure
+            ae = request.form.get('ae')
+            camera_settings["AeEnable"] = (ae == 'on')
+
+    # Generate the HTML page with the current settings
+    return f'''
     <html>
-        <head><title>Raspberry Pi Camera</title></head>
+        <head>
+            <title>Raspberry Pi Camera</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; }}
+                .container {{ display: flex; }}
+                .image {{ flex: 1; }}
+                .settings {{ flex: 1; padding-left: 20px; }}
+                input[type="range"] {{ width: 100%; }}
+            </style>
+        </head>
         <body>
             <h1>Live Camera Feed</h1>
-            <img src="/image.jpg" width="1920" height="1080"/>
+            <div class="container">
+                <div class="image">
+                    <img src="/image.jpg" width="640" height="480"/>
+                </div>
+                <div class="settings">
+                    <h2>Camera Settings</h2>
+                    <form method="post">
+                        <label for="exposure">Exposure Time (µs):</label><br>
+                        <input type="number" id="exposure" name="exposure" min="1" max="1000000" value="{camera_settings['ExposureTime'] if camera_settings['ExposureTime'] else ''}"><br><br>
+
+                        <label for="gain">Analogue Gain:</label><br>
+                        <input type="number" step="0.1" id="gain" name="gain" min="1.0" max="16.0" value="{camera_settings['AnalogueGain'] if camera_settings['AnalogueGain'] else ''}"><br><br>
+
+                        <label for="brightness">Brightness (-1.0 to 1.0):</label><br>
+                        <input type="range" id="brightness" name="brightness" min="-1.0" max="1.0" step="0.1" value="{camera_settings['Brightness']}"><br><br>
+
+                        <label for="contrast">Contrast (0.0 to 2.0):</label><br>
+                        <input type="range" id="contrast" name="contrast" min="0.0" max="2.0" step="0.1" value="{camera_settings['Contrast']}"><br><br>
+
+                        <label for="awb">Auto White Balance:</label>
+                        <input type="checkbox" id="awb" name="awb" {'checked' if camera_settings['AwbEnable'] else ''}><br><br>
+
+                        <label for="ae">Auto Exposure:</label>
+                        <input type="checkbox" id="ae" name="ae" {'checked' if camera_settings['AeEnable'] else ''}><br><br>
+
+                        <input type="submit" value="Update Settings">
+                    </form>
+                </div>
+            </div>
+            <script>
+                // Auto-refresh the image every second
+                setInterval(() => {{
+                    const img = document.querySelector('img');
+                    img.src = '/image.jpg?' + new Date().getTime();
+                }}, 1000);
+            </script>
         </body>
     </html>
     '''
