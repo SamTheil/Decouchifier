@@ -41,6 +41,10 @@ def detect_dogs(image):
     # Preprocess the image for the model
     img_resized = cv2.resize(image, (300, 300))
 
+    # Check the model's expected input shape
+    input_shape = input_details[0]['shape']
+    print(f"Expected input shape: {input_shape}")  # Print the expected shape
+
     # Check the expected input type and cast if necessary
     input_type = input_details[0]['dtype']
     if input_type == np.uint8:
@@ -50,6 +54,9 @@ def detect_dogs(image):
 
     # Add a batch dimension: (1, 300, 300, 3)
     img_resized = np.expand_dims(img_resized, axis=0)
+
+    # Print the actual shape of the image
+    print(f"Actual input shape: {img_resized.shape}")  # Print the shape of the image we're sending
 
     # Set the tensor to the interpreter
     interpreter.set_tensor(input_details[0]['index'], img_resized)
