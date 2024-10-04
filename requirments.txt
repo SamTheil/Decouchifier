@@ -6,3 +6,4 @@ pip install picamera2
 sudo apt install -y libcamera-apps libcamera-dev
 sudo apt install -y python3-libcamera
 echo "include-system-site-packages = true" >> ~/tflite-env/pyvenv.cfg
+pip install "numpy<2"

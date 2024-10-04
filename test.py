@@ -40,7 +40,13 @@ camera_settings = {
 def detect_dogs(image):
     # Preprocess the image for the model
     img_resized = cv2.resize(image, (300, 300))
-    img_resized = np.expand_dims(img_resized, axis=0).astype(np.float32)
+
+    # Check the expected input type and cast if necessary
+    input_type = input_details[0]['dtype']
+    if input_type == np.uint8:
+        img_resized = np.expand_dims(img_resized, axis=0).astype(np.uint8)
+    else:
+        img_resized = np.expand_dims(img_resized, axis=0).astype(np.float32)
 
     # Set the tensor to the interpreter
     interpreter.set_tensor(input_details[0]['index'], img_resized)
