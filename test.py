@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-import tensorflow as tf
+import tflite_runtime.interpreter as tflite
 from picamera2 import Picamera2
 from flask import Flask, send_file, request
 from io import BytesIO
