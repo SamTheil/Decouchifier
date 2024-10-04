@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-import tflite_runtime.interpreter as tf
+import tflite_runtime.interpreter as tflite
 from picamera2 import Picamera2
 from flask import Flask, send_file, request
 from io import BytesIO
@@ -8,7 +8,7 @@ from threading import Thread, Lock
 from PIL import Image
 
 # Load the TensorFlow Lite model and allocate tensors
-interpreter = tf.lite.Interpreter(model_path='dog_detector.tflite')
+interpreter = tflite.Interpreter(model_path='dog_detector.tflite')
 interpreter.allocate_tensors()
 
 # Get model input/output details
