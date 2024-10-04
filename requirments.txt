@@ -1,2 +1,9 @@
-python3-flask
-python3-picamera
+sudo apt update
+sudo apt install -y python3-pip libatlas-base-dev
+pip3 install tflite-runtime
+sudo apt update
+sudo apt install -y libjpeg-dev libtiff5-dev libjasper-dev libpng-dev
+sudo apt install -y libavcodec-dev libavformat-dev libswscale-dev libv4l-dev
+sudo apt install -y libxvidcore-dev libx264-dev qtbase5-dev
+sudo apt install -y libatlas-base-dev gfortran
+sudo apt install python3-opencv
