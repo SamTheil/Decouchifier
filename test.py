@@ -44,9 +44,12 @@ def detect_dogs(image):
     # Check the expected input type and cast if necessary
     input_type = input_details[0]['dtype']
     if input_type == np.uint8:
-        img_resized = np.expand_dims(img_resized, axis=0).astype(np.uint8)
+        img_resized = img_resized.astype(np.uint8)
     else:
-        img_resized = np.expand_dims(img_resized, axis=0).astype(np.float32)
+        img_resized = img_resized.astype(np.float32)
+
+    # Add a batch dimension: (1, 300, 300, 3)
+    img_resized = np.expand_dims(img_resized, axis=0)
 
     # Set the tensor to the interpreter
     interpreter.set_tensor(input_details[0]['index'], img_resized)
