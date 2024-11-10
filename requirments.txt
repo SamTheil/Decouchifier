@@ -1,9 +1,0 @@
-pip install tflite-runtime
-pip install opencv-python
-sudo apt install -y python3-pyqt5 libqt5gui5 libqt5core5a libqt5widgets5 libqt5test5
-sudo apt install libcap-dev
-pip install picamera2
-sudo apt install -y libcamera-apps libcamera-dev
-sudo apt install -y python3-libcamera
-echo "include-system-site-packages = true" >> ~/tflite-env/pyvenv.cfg
-pip install "numpy<2"
