@@ -55,7 +55,7 @@ def capture_frames():
                     cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     
                     # Add label text
-                    text = f"{label} ({box.conf:.2f})"
+                    text = f"{label} ({float(box.conf):.2f})"
                     cv2.putText(annotated_frame, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
         # Calculate FPS every second
