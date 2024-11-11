@@ -7,6 +7,8 @@ class RelayClass():
         GPIO.setmode(GPIO.BCM)
         # Set GPIO 23 as an output pin
         GPIO.setup(23, GPIO.OUT)
+
+        self.turn_off_relay()
     
     def turn_on_relay(self):
         # Set GPIO 23 high to turn the relay on

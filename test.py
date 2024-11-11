@@ -7,6 +7,9 @@ from picamera2 import Picamera2
 from ultralytics import YOLO
 from PIL import Image
 import numpy as np
+from Interfaces.relay_class import RelayClass
+
+relay = RelayClass()
 
 # Set up the camera with Picamera2
 picam2 = Picamera2()
@@ -32,9 +35,13 @@ class_labels = ["person", "dog"]  # Replace with the labels corresponding to you
 # Confidence threshold for filtering detections
 CONFIDENCE_THRESHOLD = 0.5  # Set the desired confidence threshold (0.5 is an example)
 
+# Variables to track detection states
+dog_detected_frames = 0  # Counter for consecutive frames with dog detections
+DOG_DETECTION_THRESHOLD = 1  # Number of consecutive frames with detection required to trigger relay
+
 # Function to capture and process frames in a background thread
 def capture_frames():
-    global latest_frame
+    global latest_frame, dog_detected_frames
     last_time = time.time()
     
     while True:
@@ -42,6 +49,7 @@ def capture_frames():
         
         # Run YOLO model and store results
         results = model(frame)
+        dog_detected = False  # Flag to check if dog is detected in the current frame
 
         # Filter detections for specific labels and confidence
         annotated_frame = frame.copy()  # Copy original frame to draw on
@@ -54,6 +62,10 @@ def capture_frames():
 
                 # Only process "person" or "dog" if confidence is above threshold
                 if label in ["person", "dog"] and confidence >= CONFIDENCE_THRESHOLD:
+                    # Check if "dog" is detected
+                    if label == "dog":
+                        dog_detected = True  # Mark dog detected in this frame
+                    
                     # Draw bounding box
                     x1, y1, x2, y2 = map(int, box.xyxy[0])  # Get box coordinates
                     cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -61,6 +73,19 @@ def capture_frames():
                     # Add label and confidence text
                     text = f"{label} ({confidence:.2f})"
                     cv2.putText(annotated_frame, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+        # Check dog detection status
+        if dog_detected:
+            dog_detected_frames += 1
+        else:
+            dog_detected_frames = 0  # Reset counter if no dog detected
+
+        # Trigger relay if dog is detected in consecutive frames
+        if dog_detected_frames > DOG_DETECTION_THRESHOLD:
+            relay.turn_on_relay()
+            time.sleep(2)  # Keep the relay on for 2 seconds
+            relay.turn_off_relay()
+            dog_detected_frames = 0  # Reset counter after triggering relay
 
         # Calculate FPS every second
         current_time = time.time()
