@@ -26,6 +26,9 @@ app = Flask(__name__)
 latest_frame = None
 frame_lock = threading.Lock()
 
+# Define the YOLO class labels
+class_labels = ["person", "dog"]  # Replace with the labels corresponding to your model
+
 # Function to capture and process frames in a background thread
 def capture_frames():
     global latest_frame
@@ -37,12 +40,15 @@ def capture_frames():
         # Run YOLO model and store results
         results = model(frame)
 
-        # Filter detections for dogs and persons only
+        # Filter detections for specific labels
         filtered_boxes = []
         for result in results:
             for box in result.boxes:
-                label = box.label
-                if label == "person" or label == "dog":  # Only keep person and dog detections
+                # Get the class ID and map it to the label
+                class_id = int(box.cls)  # Ensure class_id is an integer
+                label = class_labels[class_id] if class_id < len(class_labels) else None
+
+                if label in ["person", "dog"]:  # Only keep person and dog detections
                     filtered_boxes.append(box)
 
         # Plot only filtered results
