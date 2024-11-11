@@ -102,11 +102,14 @@ def index():
         <head>
             <title>YOLO Detection</title>
             <style>
-                /* CSS to make the image responsive and take full width of the browser */
+                /* CSS to make the image fit within the viewport without stretching */
                 img {
-                    width: 100%;
-                    height: auto;
-                    max-height: 100vh;  /* Restrict the image height to the viewport height */
+                    max-width: 100%;         /* Scale down the width to fit the browser width */
+                    max-height: 100vh;       /* Limit height to viewport height to avoid scrolling */
+                    width: auto;             /* Maintain aspect ratio */
+                    height: auto;            /* Maintain aspect ratio */
+                    display: block;
+                    margin: 0 auto;          /* Center the image */
                 }
                 body {
                     margin: 0;
