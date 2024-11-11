@@ -106,6 +106,7 @@ def index():
                 img {
                     width: 100%;
                     height: auto;
+                    max-height: 100vh;  /* Restrict the image height to the viewport height */
                 }
                 body {
                     margin: 0;
