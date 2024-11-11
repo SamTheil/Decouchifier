@@ -3,3 +3,4 @@ sudo apt install python3-pip -y
 pip install -U pip
 pip install ultralytics[export]
 pip install flask
+pip install opencv-python

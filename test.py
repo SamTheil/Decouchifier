@@ -10,7 +10,7 @@ import numpy as np
 
 # Set up the camera with Picamera2
 picam2 = Picamera2()
-picam2.preview_configuration.main.size = (640, 640)  # Reduced resolution
+picam2.preview_configuration.main.size = (1280, 1280)
 picam2.preview_configuration.main.format = "RGB888"
 picam2.preview_configuration.align()
 picam2.configure("preview")
@@ -34,13 +34,23 @@ def capture_frames():
     while True:
         frame = picam2.capture_array()
         
-        # Resize frame for faster processing
-        frame = cv2.resize(frame, (320, 320))  # Further reduced resolution
-        
         # Run YOLO model and store results
         results = model(frame)
-        annotated_frame = results[0].plot()
-        
+
+        # Filter detections for dogs and persons only
+        filtered_boxes = []
+        for result in results:
+            for box in result.boxes:
+                label = box.label
+                if label == "person" or label == "dog":  # Only keep person and dog detections
+                    filtered_boxes.append(box)
+
+        # Plot only filtered results
+        annotated_frame = frame.copy()  # Copy original frame to draw on
+        for box in filtered_boxes:
+            # Draw bounding boxes and labels on the frame
+            annotated_frame = box.plot(annotated_frame)
+
         # Calculate FPS every second
         current_time = time.time()
         fps = 1 / (current_time - last_time)
@@ -84,10 +94,29 @@ def index():
     <html>
         <head>
             <title>YOLO Detection</title>
+            <style>
+                /* CSS to make the image responsive and take full width of the browser */
+                img {
+                    width: 100%;
+                    height: auto;
+                }
+                body {
+                    margin: 0;
+                    padding: 0;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    flex-direction: column;
+                    font-family: Arial, sans-serif;
+                }
+                h1 {
+                    margin-top: 20px;
+                }
+            </style>
         </head>
         <body>
             <h1>Live YOLO Detection Feed</h1>
-            <img src="/video_feed" width="80%">
+            <img src="/video_feed">
         </body>
     </html>
     '''
