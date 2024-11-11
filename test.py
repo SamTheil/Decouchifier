@@ -10,14 +10,14 @@ import numpy as np
 
 # Set up the camera with Picamera2
 picam2 = Picamera2()
-picam2.preview_configuration.main.size = (1280, 1280)
+picam2.preview_configuration.main.size = (640, 640)
 picam2.preview_configuration.main.format = "RGB888"
 picam2.preview_configuration.align()
 picam2.configure("preview")
 picam2.start()
 
 # Load a lighter YOLO model
-model = YOLO("yolov8n_ncnn_model")  # or smaller model if available
+model = YOLO("yolov11n_ncnn_model")  # or smaller model if available
 
 # Flask app initialization
 app = Flask(__name__)
