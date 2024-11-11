@@ -29,7 +29,9 @@ frame_lock = threading.Lock()
 # Define the YOLO class labels
 class_labels = ["person", "dog"]  # Replace with the labels corresponding to your model
 
-# Function to capture and process frames in a background thread
+# Confidence threshold for filtering detections
+CONFIDENCE_THRESHOLD = 0.5  # Set the desired confidence threshold (0.5 is an example)
+
 # Function to capture and process frames in a background thread
 def capture_frames():
     global latest_frame
@@ -41,21 +43,23 @@ def capture_frames():
         # Run YOLO model and store results
         results = model(frame)
 
-        # Filter detections for specific labels
+        # Filter detections for specific labels and confidence
         annotated_frame = frame.copy()  # Copy original frame to draw on
         for result in results:
             for box in result.boxes:
-                # Get the class ID and map it to the label
+                # Get the class ID, confidence, and map it to the label
                 class_id = int(box.cls)  # Ensure class_id is an integer
                 label = class_labels[class_id] if class_id < len(class_labels) else None
+                confidence = float(box.conf)
 
-                if label in ["person", "dog"]:  # Only keep person and dog detections
+                # Only process "person" or "dog" if confidence is above threshold
+                if label in ["person", "dog"] and confidence >= CONFIDENCE_THRESHOLD:
                     # Draw bounding box
                     x1, y1, x2, y2 = map(int, box.xyxy[0])  # Get box coordinates
                     cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     
-                    # Add label text
-                    text = f"{label} ({float(box.conf):.2f})"
+                    # Add label and confidence text
+                    text = f"{label} ({confidence:.2f})"
                     cv2.putText(annotated_frame, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
         # Calculate FPS every second
