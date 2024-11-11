@@ -30,6 +30,7 @@ frame_lock = threading.Lock()
 class_labels = ["person", "dog"]  # Replace with the labels corresponding to your model
 
 # Function to capture and process frames in a background thread
+# Function to capture and process frames in a background thread
 def capture_frames():
     global latest_frame
     last_time = time.time()
@@ -41,7 +42,7 @@ def capture_frames():
         results = model(frame)
 
         # Filter detections for specific labels
-        filtered_boxes = []
+        annotated_frame = frame.copy()  # Copy original frame to draw on
         for result in results:
             for box in result.boxes:
                 # Get the class ID and map it to the label
@@ -49,26 +50,26 @@ def capture_frames():
                 label = class_labels[class_id] if class_id < len(class_labels) else None
 
                 if label in ["person", "dog"]:  # Only keep person and dog detections
-                    filtered_boxes.append(box)
-
-        # Plot only filtered results
-        annotated_frame = frame.copy()  # Copy original frame to draw on
-        for box in filtered_boxes:
-            # Draw bounding boxes and labels on the frame
-            annotated_frame = box.plot(annotated_frame)
+                    # Draw bounding box
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])  # Get box coordinates
+                    cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    
+                    # Add label text
+                    text = f"{label} ({box.conf:.2f})"
+                    cv2.putText(annotated_frame, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
         # Calculate FPS every second
         current_time = time.time()
         fps = 1 / (current_time - last_time)
         last_time = current_time
-        text = f'FPS: {fps:.1f}'
+        fps_text = f'FPS: {fps:.1f}'
         
         # Draw FPS text on the annotated frame
         font = cv2.FONT_HERSHEY_SIMPLEX
-        text_size = cv2.getTextSize(text, font, 1, 2)[0]
+        text_size = cv2.getTextSize(fps_text, font, 1, 2)[0]
         text_x = annotated_frame.shape[1] - text_size[0] - 10
         text_y = text_size[1] + 10
-        cv2.putText(annotated_frame, text, (text_x, text_y), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(annotated_frame, fps_text, (text_x, text_y), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
         
         # Lock and update the global latest_frame variable
         with frame_lock:
