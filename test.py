@@ -17,7 +17,7 @@ picam2.configure("preview")
 picam2.start()
 
 # Load a lighter YOLO model
-model = YOLO("yolov8n.pt")  # or smaller model if available
+model = YOLO("yolo11n.pt")  # or smaller model if available
 
 # Flask app initialization
 app = Flask(__name__)
