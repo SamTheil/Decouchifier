@@ -26,8 +26,7 @@ desired_resolution = (desired_width, desired_height)
 
 # Create still configuration with full resolution
 camera_config = picam2.create_still_configuration(
-    main={"size": sensor_resolution, "format": "RGB888"},
-    transform=picam2.sensor_transform
+    main={"size": sensor_resolution, "format": "RGB888"}
 )
 picam2.configure(camera_config)
 
