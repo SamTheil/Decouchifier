@@ -2,6 +2,7 @@ import cv2
 import io
 import time
 import threading
+import base64
 from flask import Flask, Response, request, jsonify
 from picamera2 import Picamera2
 from ultralytics import YOLO
@@ -20,7 +21,7 @@ picam2.configure("preview")
 picam2.start()
 
 # Load a lighter YOLO model
-model = YOLO("yolo11s.pt")  # or smaller model if available
+model = YOLO("yolo11n_ncnn_model")  # or smaller model if available
 
 # Flask app initialization
 app = Flask(__name__)
@@ -32,20 +33,23 @@ detection_enabled = False  # Controls whether detection is active
 CONFIDENCE_THRESHOLD = 0.5  # Default confidence threshold
 dog_detected_frames = 0  # Counter for consecutive frames with dog detections
 DOG_DETECTION_THRESHOLD = 1  # Frames required to trigger relay
+mask = None
+mask_lock = threading.Lock()
 
 # Define the YOLO class labels
 class_labels = ["person", "dog"]  # Replace with the labels corresponding to your model
 
 # Function to capture and process frames in a background thread
 def capture_frames():
-    global latest_frame, dog_detected_frames, detection_enabled, CONFIDENCE_THRESHOLD
+    global latest_frame, dog_detected_frames, detection_enabled, CONFIDENCE_THRESHOLD, mask
     last_time = time.time()
     
     while True:
         frame = picam2.capture_array()
-
         # Rotate the image 180 degrees
         frame = cv2.rotate(frame, cv2.ROTATE_180)
+        # Ensure frame is of size (640, 480)
+        frame = cv2.resize(frame, (640, 480))
         
         if detection_enabled:
             # Run YOLO model and store results
@@ -62,7 +66,26 @@ def capture_frames():
 
                     # Only process "dog" if confidence is above threshold
                     if label == "dog" and confidence >= CONFIDENCE_THRESHOLD:
-                        dog_detected = True  # Mark dog detected in this frame
+                        # Get bounding box coordinates
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])  # [x1, y1, x2, y2]
+                        # Calculate center point
+                        center_x = int((x1 + x2) / 2)
+                        center_y = int((y1 + y2) / 2)
+                        # Check if center point is inside the mask
+                        inside_mask = True
+                        if mask is not None:
+                            with mask_lock:
+                                if center_y >= 0 and center_y < mask.shape[0] and center_x >= 0 and center_x < mask.shape[1]:
+                                    if mask[center_y, center_x]:
+                                        inside_mask = True
+                                    else:
+                                        inside_mask = False
+                                else:
+                                    inside_mask = False
+                        if inside_mask:
+                            dog_detected = True  # Dog detected inside the selected area
+                # Break after processing the first result
+                break  # Since we only process one frame at a time
 
             # Check dog detection status
             if dog_detected:
@@ -71,7 +94,7 @@ def capture_frames():
                 dog_detected_frames = 0  # Reset counter if no dog detected
 
             # Trigger relay if dog is detected in consecutive frames
-            if dog_detected_frames > DOG_DETECTION_THRESHOLD:
+            if dog_detected_frames >= DOG_DETECTION_THRESHOLD:
                 relay.turn_on_relay()
                 time.sleep(2)  # Keep the relay on for 2 seconds
                 relay.turn_off_relay()
@@ -119,6 +142,43 @@ def video_feed():
         
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+# Route to capture a still image
+@app.route('/capture_image')
+def capture_image():
+    # Capture a frame
+    frame = picam2.capture_array()
+    # Rotate the image 180 degrees
+    frame = cv2.rotate(frame, cv2.ROTATE_180)
+    # Resize frame to (640, 480)
+    frame = cv2.resize(frame, (640, 480))
+    # Encode as JPEG
+    _, jpeg = cv2.imencode('.jpg', frame)
+    response = Response(jpeg.tobytes(), mimetype='image/jpeg')
+    return response
+
+# Route to save the mask
+@app.route('/save_mask', methods=['POST'])
+def save_mask():
+    global mask
+    data = request.get_json()
+    mask_data = data.get('mask')
+    if mask_data:
+        # Decode the base64 image
+        header, encoded = mask_data.split(',', 1)
+        mask_bytes = base64.b64decode(encoded)
+        # Convert bytes to numpy array
+        nparr = np.frombuffer(mask_bytes, np.uint8)
+        mask_img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
+        # Resize mask to match frame size
+        mask_img = cv2.resize(mask_img, (640, 480))
+        # Convert to binary mask (0 and 1)
+        _, binary_mask = cv2.threshold(mask_img, 127, 1, cv2.THRESH_BINARY)
+        with mask_lock:
+            mask = binary_mask
+        return jsonify({'message': 'Mask saved successfully.'})
+    else:
+        return jsonify({'message': 'No mask data received.'}), 400
+
 # Main page route
 @app.route('/', methods=['GET'])
 def index():
@@ -126,7 +186,7 @@ def index():
     # Display video feed only when detection is off
     video_feed = ''
     if not detection_enabled:
-        video_feed = '<img src="/video_feed">'
+        video_feed = '<img src="/video_feed" id="video-stream">'
     
     return f'''
     <html>
@@ -164,6 +224,21 @@ def index():
                 label {{
                     font-size: 16px;
                 }}
+                #canvas-container {{
+                    position: relative;
+                    display: none;
+                }}
+                #snapshot {{
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                }}
+                #drawingCanvas {{
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    background: transparent;
+                }}
             </style>
             <script>
                 function sendRequest(endpoint, data) {{
@@ -184,6 +259,102 @@ def index():
                         console.error('Error:', error);
                     }});
                 }}
+
+                function defineDetectionZone() {{
+                    // Fetch the image from the server
+                    fetch('/capture_image')
+                    .then(response => response.blob())
+                    .then(blob => {{
+                        const img = document.getElementById('snapshot');
+                        img.src = URL.createObjectURL(blob);
+                        img.onload = function() {{
+                            // Set up the canvas dimensions
+                            img.width = img.naturalWidth;
+                            img.height = img.naturalHeight;
+                            const canvas = document.getElementById('drawingCanvas');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            // Show the canvas-container
+                            document.getElementById('canvas-container').style.display = 'block';
+                            setUpDrawing();
+                        }}
+                    }})
+                    .catch((error) => {{
+                        console.error('Error:', error);
+                    }});
+                }}
+
+                function setUpDrawing() {{
+                    const canvas = document.getElementById('drawingCanvas');
+                    const context = canvas.getContext('2d');
+                    let drawing = false;
+                    let erasing = false;
+                    let brushSize = parseInt(document.getElementById('brushSize').value);
+
+                    canvas.onmousedown = function(e) {{
+                        drawing = true;
+                        context.beginPath();
+                        context.moveTo(e.offsetX, e.offsetY);
+                    }};
+
+                    canvas.onmousemove = function(e) {{
+                        if (drawing) {{
+                            context.lineTo(e.offsetX, e.offsetY);
+                            context.lineWidth = brushSize;
+                            context.lineCap = 'round';
+                            if (erasing) {{
+                                context.globalCompositeOperation = 'destination-out';
+                                context.strokeStyle = 'rgba(0,0,0,1)';
+                            }} else {{
+                                context.globalCompositeOperation = 'source-over';
+                                context.strokeStyle = 'red';
+                            }}
+                            context.stroke();
+                        }}
+                    }};
+
+                    canvas.onmouseup = function(e) {{
+                        if (drawing) {{
+                            context.lineTo(e.offsetX, e.offsetY);
+                            context.stroke();
+                            context.closePath();
+                            drawing = false;
+                        }}
+                    }};
+
+                    document.getElementById('brushSize').onchange = function(e) {{
+                        brushSize = parseInt(e.target.value);
+                    }};
+
+                    document.getElementById('eraseToggle').onclick = function(e) {{
+                        erasing = !erasing;
+                        e.target.textContent = erasing ? 'Erase Mode' : 'Draw Mode';
+                    }};
+                }}
+
+                function saveMask() {{
+                    const canvas = document.getElementById('drawingCanvas');
+                    const maskData = canvas.toDataURL('image/png');
+
+                    fetch('/save_mask', {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'application/json'
+                        }},
+                        body: JSON.stringify({{'mask': maskData}})
+                    }})
+                    .then(response => response.json())
+                    .then(data => {{
+                        alert(data.message);
+                        // Hide the canvas-container
+                        document.getElementById('canvas-container').style.display = 'none';
+                        // Reload the page to update the UI
+                        window.location.reload();
+                    }})
+                    .catch((error) => {{
+                        console.error('Error:', error);
+                    }});
+                }}
             </script>
         </head>
         <body>
@@ -192,10 +363,21 @@ def index():
             <button onclick="sendRequest('/start_detection', {{}})" {'disabled' if detection_enabled else ''}>Start Detection</button>
             <button onclick="sendRequest('/stop_detection', {{}})" {'disabled' if not detection_enabled else ''}>Stop Detection</button>
             <button onclick="sendRequest('/test_alarm', {{}})">Test Alarm</button>
+            <button onclick="defineDetectionZone()">Define Detection Zone</button>
             <br>
             <label for="confidence">Confidence Threshold:</label>
             <input type="number" id="confidence" step="0.1" min="0" max="1" value="{CONFIDENCE_THRESHOLD}" {'disabled' if detection_enabled else ''}>
             <button onclick="sendRequest('/set_confidence', {{'confidence': document.getElementById('confidence').value}})" {'disabled' if detection_enabled else ''}>Set Confidence Threshold</button>
+            <br>
+            <div id="canvas-container">
+                <img id="snapshot">
+                <canvas id="drawingCanvas"></canvas>
+                <br>
+                <label for="brushSize">Brush Size:</label>
+                <input type="number" id="brushSize" value="5" min="1" max="50">
+                <button id="eraseToggle">Draw Mode</button>
+                <button onclick="saveMask()">Save Zone</button>
+            </div>
         </body>
     </html>
     '''
