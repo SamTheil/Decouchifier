@@ -286,15 +286,16 @@ def index():
                     display: none;
                 }}
                 #snapshot {{
-                    position: absolute;
-                    top: 0;
-                    left: 0;
+                    display: block;
                 }}
                 #drawingCanvas {{
                     position: absolute;
                     top: 0;
                     left: 0;
                     background: transparent;
+                }}
+                #drawing-tools {{
+                    display: none;
                 }}
             </style>
             <script>
@@ -331,8 +332,9 @@ def index():
                             const canvas = document.getElementById('drawingCanvas');
                             canvas.width = img.width;
                             canvas.height = img.height;
-                            // Show the canvas-container
+                            // Show the canvas-container and drawing-tools
                             document.getElementById('canvas-container').style.display = 'block';
+                            document.getElementById('drawing-tools').style.display = 'block';
                             setUpDrawing();
                         }}
                     }})
@@ -410,8 +412,9 @@ def index():
                     .then(response => response.json())
                     .then(data => {{
                         alert(data.message);
-                        // Hide the canvas-container
+                        // Hide the canvas-container and drawing-tools
                         document.getElementById('canvas-container').style.display = 'none';
+                        document.getElementById('drawing-tools').style.display = 'none';
                         // Reload the page to update the UI
                         window.location.reload();
                     }})
@@ -442,6 +445,8 @@ def index():
             <div id="canvas-container">
                 <img id="snapshot">
                 <canvas id="drawingCanvas"></canvas>
+            </div>
+            <div id="drawing-tools">
                 <br>
                 <label for="brushSize">Brush Size:</label>
                 <input type="number" id="brushSize" value="5" min="1" max="50">
