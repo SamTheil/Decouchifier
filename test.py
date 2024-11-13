@@ -46,11 +46,12 @@ latest_frame = None
 frame_lock = threading.Lock()
 detection_enabled = False  # Controls whether detection is active
 CONFIDENCE_THRESHOLD = 0.5  # Default confidence threshold
-dog_detected_frames = 0  # Counter for consecutive frames with dog detections
-DOG_DETECTION_THRESHOLD = 1  # Frames required to trigger relay
+object_detected_frames = 0  # Counter for consecutive frames with object detections
+DETECTION_THRESHOLD = 1  # Frames required to trigger relay
 mask = None
 mask_lock = threading.Lock()
 MASK_FILE = 'mask.npy'  # File to save the mask
+detection_class_label = 'dog'  # Default detection class label
 
 # Define the YOLO class labels
 class_labels = ["person", "dog"]  # Replace with the labels corresponding to your model
@@ -69,9 +70,9 @@ load_mask()
 
 # Function to capture and process frames in a background thread
 def capture_frames():
-    global latest_frame, dog_detected_frames, detection_enabled, CONFIDENCE_THRESHOLD, mask
+    global latest_frame, object_detected_frames, detection_enabled, CONFIDENCE_THRESHOLD, mask
     last_time = time.time()
-    
+
     while True:
         # Capture at full resolution
         frame = picam2.capture_array()
@@ -79,13 +80,26 @@ def capture_frames():
         frame = cv2.rotate(frame, cv2.ROTATE_180)
         # Downscale to desired resolution
         frame = cv2.resize(frame, desired_resolution, interpolation=cv2.INTER_LINEAR)
-    
+
+        # Calculate FPS
+        current_time = time.time()
+        fps = 1 / (current_time - last_time)
+        last_time = current_time
+        fps_text = f'FPS: {fps:.1f}'
+
+        # Draw FPS text on the frame
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        text_size = cv2.getTextSize(fps_text, font, 1, 2)[0]
+        text_x = frame.shape[1] - text_size[0] - 10
+        text_y = text_size[1] + 10
+        cv2.putText(frame, fps_text, (text_x, text_y), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+
         if detection_enabled:
             # Run YOLO model and store results
             results = model(frame)
-            dog_detected = False  # Flag to check if dog is detected in the current frame
+            object_detected = False  # Flag to check if the object is detected in the current frame
 
-            # Filter detections for specific labels and confidence
+            # Process results
             for result in results:
                 for box in result.boxes:
                     # Get the class ID, confidence, and map it to the label
@@ -93,8 +107,8 @@ def capture_frames():
                     label = class_labels[class_id] if class_id < len(class_labels) else None
                     confidence = float(box.conf)
 
-                    # Only process "dog" if confidence is above threshold
-                    if label == "dog" and confidence >= CONFIDENCE_THRESHOLD:
+                    # Only process if label matches detection_class_label and confidence is above threshold
+                    if label == detection_class_label and confidence >= CONFIDENCE_THRESHOLD:
                         # Get bounding box coordinates
                         x1, y1, x2, y2 = map(int, box.xyxy[0])  # [x1, y1, x2, y2]
                         # Calculate center point
@@ -112,47 +126,37 @@ def capture_frames():
                                 else:
                                     inside_mask = False
                         else:
-                            inside_mask = False  # If no mask is defined, do not detect
+                            inside_mask = True  # If no mask is defined, default to entire screen
+
                         if inside_mask:
-                            dog_detected = True  # Dog detected inside the selected area
+                            object_detected = True  # Object detected inside the selected area
+                            # Draw a dot over the object
+                            cv2.circle(frame, (center_x, center_y), 5, (0, 0, 255), -1)
+                            # Optionally, draw bounding box
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                            # Draw label and confidence
+                            label_text = f"{label}: {confidence:.2f}"
+                            cv2.putText(frame, label_text, (x1, y1 - 10), font, 0.5, (0, 255, 0), 2)
+
                 # Break after processing the first result
                 break  # Since we only process one frame at a time
 
-            # Check dog detection status
-            if dog_detected:
-                dog_detected_frames += 1
+            # Check object detection status
+            if object_detected:
+                object_detected_frames += 1
             else:
-                dog_detected_frames = 0  # Reset counter if no dog detected
+                object_detected_frames = 0  # Reset counter if no object detected
 
-            # Trigger relay if dog is detected in consecutive frames
-            if dog_detected_frames >= DOG_DETECTION_THRESHOLD:
+            # Trigger relay if object is detected in consecutive frames
+            if object_detected_frames >= DETECTION_THRESHOLD:
                 relay.turn_on_relay()
                 time.sleep(2)  # Keep the relay on for 2 seconds
                 relay.turn_off_relay()
-                dog_detected_frames = 0  # Reset counter after triggering relay
+                object_detected_frames = 0  # Reset counter after triggering relay
 
-            # Do not update latest_frame to stop video feed
-            with frame_lock:
-                latest_frame = None
-
-        else:
-            # When detection is disabled, just update latest_frame for streaming
-            # Calculate FPS
-            current_time = time.time()
-            fps = 1 / (current_time - last_time)
-            last_time = current_time
-            fps_text = f'FPS: {fps:.1f}'
-
-            # Draw FPS text on the frame
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            text_size = cv2.getTextSize(fps_text, font, 1, 2)[0]
-            text_x = frame.shape[1] - text_size[0] - 10
-            text_y = text_size[1] + 10
-            cv2.putText(frame, fps_text, (text_x, text_y), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
-
-            # Lock and update the global latest_frame variable
-            with frame_lock:
-                latest_frame = frame
+        # Update latest_frame with the annotated frame
+        with frame_lock:
+            latest_frame = frame
 
 # Start frame capture in a separate thread
 threading.Thread(target=capture_frames, daemon=True).start()
@@ -201,7 +205,7 @@ def save_mask():
         nparr = np.frombuffer(mask_bytes, np.uint8)
         mask_img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
         # Resize mask to match frame size
-        mask_img = cv2.resize(mask_img, (640, 480))
+        mask_img = cv2.resize(mask_img, desired_resolution)
         # Convert to binary mask (0 and 1)
         _, binary_mask = cv2.threshold(mask_img, 127, 1, cv2.THRESH_BINARY)
         with mask_lock:
@@ -215,12 +219,10 @@ def save_mask():
 # Main page route
 @app.route('/', methods=['GET'])
 def index():
-    global detection_enabled, CONFIDENCE_THRESHOLD
-    # Display video feed only when detection is off
-    video_feed = ''
-    if not detection_enabled:
-        video_feed = '<img src="/video_feed" id="video-stream">'
-    
+    global detection_enabled, CONFIDENCE_THRESHOLD, detection_class_label
+    # Video feed is always displayed
+    video_feed = '<img src="/video_feed" id="video-stream">'
+
     return f'''
     <html>
         <head>
@@ -409,6 +411,13 @@ def index():
             <input type="number" id="confidence" step="0.1" min="0" max="1" value="{CONFIDENCE_THRESHOLD}" {'disabled' if detection_enabled else ''}>
             <button onclick="sendRequest('/set_confidence', {{'confidence': document.getElementById('confidence').value}})" {'disabled' if detection_enabled else ''}>Set Confidence Threshold</button>
             <br>
+            <label for="detectionClass">Detection Class:</label>
+            <select id="detectionClass">
+                <option value="dog" {'selected' if detection_class_label == 'dog' else ''}>Dog</option>
+                <option value="person" {'selected' if detection_class_label == 'person' else ''}>Person</option>
+            </select>
+            <button onclick="sendRequest('/set_detection_class', {{'class_label': document.getElementById('detectionClass').value}})">Set Detection Class</button>
+            <br>
             <div id="canvas-container">
                 <img id="snapshot">
                 <canvas id="drawingCanvas"></canvas>
@@ -425,10 +434,8 @@ def index():
 # Route to start detection
 @app.route('/start_detection', methods=['POST'])
 def start_detection():
-    global detection_enabled, latest_frame
+    global detection_enabled
     detection_enabled = True
-    with frame_lock:
-        latest_frame = None  # Clear the latest frame so video feed stops
     return jsonify({'message': 'Detection started.'})
 
 # Route to stop detection
@@ -464,6 +471,18 @@ def set_confidence():
             return jsonify({'message': 'Invalid confidence value. Must be between 0 and 1.'}), 400
     except (ValueError, TypeError):
         return jsonify({'message': 'Invalid confidence value. Must be a number.'}), 400
+
+# Route to set detection class label
+@app.route('/set_detection_class', methods=['POST'])
+def set_detection_class():
+    global detection_class_label
+    data = request.get_json()
+    class_label = data.get('class_label')
+    if class_label in ['dog', 'person']:  # Adjust based on your model's labels
+        detection_class_label = class_label
+        return jsonify({'message': f'Detection class set to {detection_class_label}.'})
+    else:
+        return jsonify({'message': 'Invalid detection class.'}), 400
 
 # Start Flask web server
 if __name__ == '__main__':
