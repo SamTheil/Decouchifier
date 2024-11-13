@@ -2,7 +2,7 @@ import cv2
 import io
 import time
 import threading
-from flask import Flask, Response, request
+from flask import Flask, Response, request, jsonify
 from picamera2 import Picamera2
 from ultralytics import YOLO
 from PIL import Image
@@ -20,7 +20,7 @@ picam2.configure("preview")
 picam2.start()
 
 # Load a lighter YOLO model
-model = YOLO("yolo11n_ncnn_model")  # or smaller model if available
+model = YOLO("yolo11s.pt")  # or smaller model if available
 
 # Flask app initialization
 app = Flask(__name__)
@@ -43,6 +43,9 @@ def capture_frames():
     
     while True:
         frame = picam2.capture_array()
+
+        # Rotate the image 180 degrees
+        frame = cv2.rotate(frame, cv2.ROTATE_180)
         
         if detection_enabled:
             # Run YOLO model and store results
@@ -124,11 +127,11 @@ def index():
     video_feed = ''
     if not detection_enabled:
         video_feed = '<img src="/video_feed">'
-
+    
     return f'''
     <html>
         <head>
-            <title>YOLO Detection</title>
+            <title>YOLO Detection Control Panel</title>
             <style>
                 img {{
                     max-width: 100%;
@@ -162,24 +165,37 @@ def index():
                     font-size: 16px;
                 }}
             </style>
+            <script>
+                function sendRequest(endpoint, data) {{
+                    fetch(endpoint, {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'application/json'
+                        }},
+                        body: JSON.stringify(data)
+                    }})
+                    .then(response => response.json())
+                    .then(data => {{
+                        alert(data.message);
+                        // Reload the page to update the UI
+                        window.location.reload();
+                    }})
+                    .catch((error) => {{
+                        console.error('Error:', error);
+                    }});
+                }}
+            </script>
         </head>
         <body>
             <h1>YOLO Detection Control Panel</h1>
             {video_feed}
-            <form action="/start_detection" method="post">
-                <input type="submit" value="Start Detection" {'disabled' if detection_enabled else ''}>
-            </form>
-            <form action="/stop_detection" method="post">
-                <input type="submit" value="Stop Detection" {'disabled' if not detection_enabled else ''}>
-            </form>
-            <form action="/test_alarm" method="post">
-                <input type="submit" value="Test Alarm">
-            </form>
-            <form action="/set_confidence" method="post">
-                <label for="confidence">Confidence Threshold:</label>
-                <input type="number" id="confidence" name="confidence" step="0.1" min="0" max="1" value="{CONFIDENCE_THRESHOLD}" {'disabled' if detection_enabled else ''}>
-                <input type="submit" value="Set Confidence Threshold" {'disabled' if detection_enabled else ''}>
-            </form>
+            <button onclick="sendRequest('/start_detection', {{}})" {'disabled' if detection_enabled else ''}>Start Detection</button>
+            <button onclick="sendRequest('/stop_detection', {{}})" {'disabled' if not detection_enabled else ''}>Stop Detection</button>
+            <button onclick="sendRequest('/test_alarm', {{}})">Test Alarm</button>
+            <br>
+            <label for="confidence">Confidence Threshold:</label>
+            <input type="number" id="confidence" step="0.1" min="0" max="1" value="{CONFIDENCE_THRESHOLD}" {'disabled' if detection_enabled else ''}>
+            <button onclick="sendRequest('/set_confidence', {{'confidence': document.getElementById('confidence').value}})" {'disabled' if detection_enabled else ''}>Set Confidence Threshold</button>
         </body>
     </html>
     '''
@@ -191,20 +207,20 @@ def start_detection():
     detection_enabled = True
     with frame_lock:
         latest_frame = None  # Clear the latest frame so video feed stops
-    return '<p>Detection started. <a href="/">Go back</a></p>'
+    return jsonify({'message': 'Detection started.'})
 
 # Route to stop detection
 @app.route('/stop_detection', methods=['POST'])
 def stop_detection():
     global detection_enabled
     detection_enabled = False
-    return '<p>Detection stopped. <a href="/">Go back</a></p>'
+    return jsonify({'message': 'Detection stopped.'})
 
 # Route to test alarm
 @app.route('/test_alarm', methods=['POST'])
 def test_alarm():
     threading.Thread(target=alarm_thread).start()
-    return '<p>Alarm tested. <a href="/">Go back</a></p>'
+    return jsonify({'message': 'Alarm tested.'})
 
 def alarm_thread():
     relay.turn_on_relay()
@@ -215,16 +231,17 @@ def alarm_thread():
 @app.route('/set_confidence', methods=['POST'])
 def set_confidence():
     global CONFIDENCE_THRESHOLD
-    confidence = request.form.get('confidence')
+    data = request.get_json()
+    confidence = data.get('confidence')
     try:
         confidence_value = float(confidence)
         if 0 <= confidence_value <= 1:
             CONFIDENCE_THRESHOLD = confidence_value
-            return f'<p>Confidence threshold set to {CONFIDENCE_THRESHOLD}. <a href="/">Go back</a></p>'
+            return jsonify({'message': f'Confidence threshold set to {CONFIDENCE_THRESHOLD}.'})
         else:
-            return '<p>Invalid confidence value. Must be between 0 and 1. <a href="/">Go back</a></p>'
-    except ValueError:
-        return '<p>Invalid confidence value. Must be a number. <a href="/">Go back</a></p>'
+            return jsonify({'message': 'Invalid confidence value. Must be between 0 and 1.'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'message': 'Invalid confidence value. Must be a number.'}), 400
 
 # Start Flask web server
 if __name__ == '__main__':
