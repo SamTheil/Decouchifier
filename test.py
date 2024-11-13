@@ -13,16 +13,16 @@ from Interfaces.relay_class import RelayClass
 
 relay = RelayClass()
 
-# Set up the camera with Picamera2
+# Set up the camera with Picamera2 at a lower resolution
 picam2 = Picamera2()
-picam2.preview_configuration.main.size = (3280, 2464)
-picam2.preview_configuration.main.format = "RGB888"
-picam2.preview_configuration.align()
-picam2.configure("preview")
+# Define the desired resolution while maintaining the aspect ratio (4:3)
+desired_resolution = (640, 480)  # You can adjust this as needed
+config = picam2.create_preview_configuration(main={"size": desired_resolution, "format": "RGB888"})
+picam2.configure(config)
 picam2.start()
 
 # Load a lighter YOLO model
-model = YOLO("yolo11n_ncnn_model")  # or smaller model if available
+model = YOLO("yolo11n_ncnn_model")  # or a smaller model if available
 
 # Flask app initialization
 app = Flask(__name__)
@@ -62,9 +62,8 @@ def capture_frames():
         frame = picam2.capture_array()
         # Rotate the image 180 degrees
         frame = cv2.rotate(frame, cv2.ROTATE_180)
-        # Ensure frame is of size (640, 480)
-        frame = cv2.resize(frame, (640, 480))
-        
+        # No need to resize since the camera captures at desired resolution
+
         if detection_enabled:
             # Run YOLO model and store results
             results = model(frame)
@@ -165,8 +164,7 @@ def capture_image():
     frame = picam2.capture_array()
     # Rotate the image 180 degrees
     frame = cv2.rotate(frame, cv2.ROTATE_180)
-    # Resize frame to (640, 480)
-    frame = cv2.resize(frame, (640, 480))
+    # No need to resize since the camera captures at desired resolution
     # Encode as JPEG
     _, jpeg = cv2.imencode('.jpg', frame)
     response = Response(jpeg.tobytes(), mimetype='image/jpeg')
