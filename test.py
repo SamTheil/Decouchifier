@@ -38,6 +38,9 @@ picam2.start()
 # Load the YOLO model
 model = YOLO("yolo11n_ncnn_model")  # or a smaller model if available
 
+# Get the class names from the model (dictionary mapping class IDs to labels)
+class_labels = model.names  # e.g., {0: 'person', 16: 'dog', ...}
+
 # Flask app initialization
 app = Flask(__name__)
 
@@ -51,10 +54,19 @@ DETECTION_THRESHOLD = 1  # Frames required to trigger relay
 mask = None
 mask_lock = threading.Lock()
 MASK_FILE = 'mask.npy'  # File to save the mask
-detection_class_label = 'dog'  # Default detection class label
 
-# Define the YOLO class labels
-class_labels = ["person", "dog"]  # Replace with the labels corresponding to your model
+# Find class IDs for 'person' and 'dog'
+person_class_id = None
+dog_class_id = None
+
+for id, name in class_labels.items():
+    if name == 'person':
+        person_class_id = id
+    elif name == 'dog':
+        dog_class_id = id
+
+# Default detection class ID (set to 'dog' by default)
+detection_class_id = dog_class_id
 
 # Load the mask from disk if it exists
 def load_mask():
@@ -104,11 +116,14 @@ def capture_frames():
                 for box in result.boxes:
                     # Get the class ID, confidence, and map it to the label
                     class_id = int(box.cls)  # Ensure class_id is an integer
-                    label = class_labels[class_id] if class_id < len(class_labels) else None
+                    label = class_labels.get(class_id, f"ID {class_id}")
                     confidence = float(box.conf)
 
-                    # Only process if label matches detection_class_label and confidence is above threshold
-                    if label == detection_class_label and confidence >= CONFIDENCE_THRESHOLD:
+                    # Debug print statements
+                    print(f"Detected object: {label} (ID: {class_id}), Confidence: {confidence}")
+
+                    # Only process if class_id matches detection_class_id and confidence is above threshold
+                    if class_id == detection_class_id and confidence >= CONFIDENCE_THRESHOLD:
                         # Get bounding box coordinates
                         x1, y1, x2, y2 = map(int, box.xyxy[0])  # [x1, y1, x2, y2]
                         # Calculate center point
@@ -219,9 +234,16 @@ def save_mask():
 # Main page route
 @app.route('/', methods=['GET'])
 def index():
-    global detection_enabled, CONFIDENCE_THRESHOLD, detection_class_label
+    global detection_enabled, CONFIDENCE_THRESHOLD, detection_class_id, class_labels
     # Video feed is always displayed
     video_feed = '<img src="/video_feed" id="video-stream">'
+
+    # Generate detection class options
+    options = ''
+    for id, label in class_labels.items():
+        if label in ['person', 'dog']:  # Limit to 'person' and 'dog' for simplicity
+            selected = 'selected' if detection_class_id == id else ''
+            options += f'<option value="{id}" {selected}>{label}</option>'
 
     return f'''
     <html>
@@ -413,10 +435,9 @@ def index():
             <br>
             <label for="detectionClass">Detection Class:</label>
             <select id="detectionClass">
-                <option value="dog" {'selected' if detection_class_label == 'dog' else ''}>Dog</option>
-                <option value="person" {'selected' if detection_class_label == 'person' else ''}>Person</option>
+                {options}
             </select>
-            <button onclick="sendRequest('/set_detection_class', {{'class_label': document.getElementById('detectionClass').value}})">Set Detection Class</button>
+            <button onclick="sendRequest('/set_detection_class', {{'class_id': document.getElementById('detectionClass').value}})">Set Detection Class</button>
             <br>
             <div id="canvas-container">
                 <img id="snapshot">
@@ -472,17 +493,22 @@ def set_confidence():
     except (ValueError, TypeError):
         return jsonify({'message': 'Invalid confidence value. Must be a number.'}), 400
 
-# Route to set detection class label
+# Route to set detection class ID
 @app.route('/set_detection_class', methods=['POST'])
 def set_detection_class():
-    global detection_class_label
+    global detection_class_id
     data = request.get_json()
-    class_label = data.get('class_label')
-    if class_label in ['dog', 'person']:  # Adjust based on your model's labels
-        detection_class_label = class_label
-        return jsonify({'message': f'Detection class set to {detection_class_label}.'})
-    else:
-        return jsonify({'message': 'Invalid detection class.'}), 400
+    class_id_str = data.get('class_id')
+    try:
+        class_id = int(class_id_str)
+        if class_id in class_labels:
+            detection_class_id = class_id
+            label = class_labels[class_id]
+            return jsonify({'message': f'Detection class set to {label} (ID: {class_id}).'})
+        else:
+            return jsonify({'message': 'Invalid detection class ID.'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'message': 'Invalid class ID format. Must be an integer.'}), 400
 
 # Start Flask web server
 if __name__ == '__main__':
