@@ -13,15 +13,30 @@ from Interfaces.relay_class import RelayClass
 
 relay = RelayClass()
 
-# Set up the camera with Picamera2 at a lower resolution
+# Initialize Picamera2
 picam2 = Picamera2()
-# Define the desired resolution while maintaining the aspect ratio (4:3)
-desired_resolution = (640, 480)  # You can adjust this as needed
-config = picam2.create_preview_configuration(main={"size": desired_resolution, "format": "RGB888"})
-picam2.configure(config)
+
+# Get full sensor resolution
+sensor_resolution = picam2.sensor_resolution  # For example, (3280, 2464)
+
+# Desired downscaled resolution (maintain aspect ratio)
+desired_width = 640
+desired_height = int(sensor_resolution[1] * (desired_width / sensor_resolution[0]))
+desired_resolution = (desired_width, desired_height)
+
+# Create still configuration with full resolution
+camera_config = picam2.create_still_configuration(
+    main={"size": sensor_resolution, "format": "RGB888"},
+    transform=picam2.sensor_transform
+)
+picam2.configure(camera_config)
+
+# Set ScalerCrop to full sensor area to avoid cropping
+picam2.set_controls({"ScalerCrop": (0, 0, sensor_resolution[0], sensor_resolution[1])})
+
 picam2.start()
 
-# Load a lighter YOLO model
+# Load the YOLO model
 model = YOLO("yolo11n_ncnn_model")  # or a smaller model if available
 
 # Flask app initialization
@@ -59,11 +74,13 @@ def capture_frames():
     last_time = time.time()
     
     while True:
+        # Capture at full resolution
         frame = picam2.capture_array()
-        # Rotate the image 180 degrees
+        # Rotate the image 180 degrees if needed
         frame = cv2.rotate(frame, cv2.ROTATE_180)
-        # No need to resize since the camera captures at desired resolution
-
+        # Downscale to desired resolution
+        frame = cv2.resize(frame, desired_resolution, interpolation=cv2.INTER_LINEAR)
+    
         if detection_enabled:
             # Run YOLO model and store results
             results = model(frame)
@@ -160,11 +177,12 @@ def video_feed():
 # Route to capture a still image
 @app.route('/capture_image')
 def capture_image():
-    # Capture a frame
+    # Capture at full resolution
     frame = picam2.capture_array()
-    # Rotate the image 180 degrees
+    # Rotate the image 180 degrees if needed
     frame = cv2.rotate(frame, cv2.ROTATE_180)
-    # No need to resize since the camera captures at desired resolution
+    # Downscale to desired resolution
+    frame = cv2.resize(frame, desired_resolution, interpolation=cv2.INTER_LINEAR)
     # Encode as JPEG
     _, jpeg = cv2.imencode('.jpg', frame)
     response = Response(jpeg.tobytes(), mimetype='image/jpeg')
