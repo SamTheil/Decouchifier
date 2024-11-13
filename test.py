@@ -3,6 +3,7 @@ import io
 import time
 import threading
 import base64
+import os
 from flask import Flask, Response, request, jsonify
 from picamera2 import Picamera2
 from ultralytics import YOLO
@@ -21,7 +22,7 @@ picam2.configure("preview")
 picam2.start()
 
 # Load a lighter YOLO model
-model = YOLO("yolo11n_ncnn_model")  # or smaller model if available
+model = YOLO("yolo11s.pt")  # or smaller model if available
 
 # Flask app initialization
 app = Flask(__name__)
@@ -35,9 +36,22 @@ dog_detected_frames = 0  # Counter for consecutive frames with dog detections
 DOG_DETECTION_THRESHOLD = 1  # Frames required to trigger relay
 mask = None
 mask_lock = threading.Lock()
+MASK_FILE = 'mask.npy'  # File to save the mask
 
 # Define the YOLO class labels
 class_labels = ["person", "dog"]  # Replace with the labels corresponding to your model
+
+# Load the mask from disk if it exists
+def load_mask():
+    global mask
+    if os.path.exists(MASK_FILE):
+        with mask_lock:
+            mask = np.load(MASK_FILE)
+        print("Mask loaded from disk.")
+    else:
+        print("No saved mask found.")
+
+load_mask()
 
 # Function to capture and process frames in a background thread
 def capture_frames():
@@ -75,13 +89,15 @@ def capture_frames():
                         inside_mask = True
                         if mask is not None:
                             with mask_lock:
-                                if center_y >= 0 and center_y < mask.shape[0] and center_x >= 0 and center_x < mask.shape[1]:
+                                if (0 <= center_y < mask.shape[0]) and (0 <= center_x < mask.shape[1]):
                                     if mask[center_y, center_x]:
                                         inside_mask = True
                                     else:
                                         inside_mask = False
                                 else:
                                     inside_mask = False
+                        else:
+                            inside_mask = False  # If no mask is defined, do not detect
                         if inside_mask:
                             dog_detected = True  # Dog detected inside the selected area
                 # Break after processing the first result
@@ -175,6 +191,8 @@ def save_mask():
         _, binary_mask = cv2.threshold(mask_img, 127, 1, cv2.THRESH_BINARY)
         with mask_lock:
             mask = binary_mask
+            # Save the mask to disk
+            np.save(MASK_FILE, mask)
         return jsonify({'message': 'Mask saved successfully.'})
     else:
         return jsonify({'message': 'No mask data received.'}), 400
@@ -317,6 +335,13 @@ def index():
                         if (drawing) {{
                             context.lineTo(e.offsetX, e.offsetY);
                             context.stroke();
+                            context.closePath();
+                            drawing = false;
+                        }}
+                    }};
+
+                    canvas.onmouseout = function(e) {{
+                        if (drawing) {{
                             context.closePath();
                             drawing = false;
                         }}
